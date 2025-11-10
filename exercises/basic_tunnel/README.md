@@ -1,25 +1,17 @@
 
 [comment]: # (SPDX-License-Identifier:  Apache-2.0)
 
-# Implementing Basic Tunneling
+# 实现基础隧道
 
-## Introduction
+## 介绍
 
-In this exercise, we will add support for a basic tunneling protocol to the IP
-router that you completed in the previous assignment.  The basic switch
-forwards based on the destination IP address.  Your jobs is to define a new
-header type to encapsulate the IP packet and modify the switch code, so that it
-instead decides the destination port using a new tunnel header.
+在本练习中，我们将在你在上一个作业中完成的 IP 路由器上添加对基础隧道协议的支持。基础交换机根据目标 IP 地址进行转发。你的任务是定义一种新的头部类型，用于封装 IP 数据包，并修改交换机代码，使其能够通过新的隧道头部字段来决定目的端口。
 
-The new header type will contain a protocol ID, which indicates the type of
-packet being encapsulated, along with a destination ID to be used for routing.
+新的头部类型将包含一个协议 ID（用于指示被封装的数据包类型）以及一个目标 ID（用于路由）。
 
+> **剧透提醒：** 在 `solution` 子目录中有一个参考实现。你可以随意将你的实现与参考实现进行比较。
 
-> **Spoiler alert:** There is a reference solution in the `solution`
-> sub-directory. Feel free to compare your implementation to the reference.
-
-The starter code for this assignment is in a file called `basic_tunnel.p4` and
-is simply the solution to the IP router from the previous exercise.
+本次作业的起始代码在名为 `basic_tunnel.p4` 的文件中，它实际就是上一个练习中 IP 路由器的解决方案。
 
 
 ### A note about the control plane

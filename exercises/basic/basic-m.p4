@@ -112,31 +112,49 @@ control MyIngress(inout headers hdr,
     }
 
     /*********************************************************************
-     * NOTE FOR NEW READERS:
-     * 'ipv4_forward(dstAddr, port)' is invoked by table 'ipv4_lpm'.
+     * 新手须知：
+     * 'ipv4_forward(dstAddr, port)' 是由表 'ipv4_lpm' 调用的。
      *
-     * The values for 'dstAddr' and 'port' are action data supplied by
-     * the control plane when it installs entries in 'ipv4_lpm'.
+     * 其中 'dstAddr' 和 'port' 的值是由控制平面在插入 'ipv4_lpm' 表项时提供的*动作参数*。
      *
-     * They mean:
-     *   - dstAddr  => Ethernet destination MAC for the next hop
-     *   - port     => output port (ultimately written to standard_metadata.egress_spec)
+     * 其含义如下：
+     *   - dstAddr  => 下一跳的以太网目的 MAC 地址
+     *   - port     => 输出端口（最终写入 standard_metadata.egress_spec 字段）
      *
-     * Example (BMv2 simple_switch_CLI):
+     * 示例（BMv2 simple_switch_CLI）：
      *   table_add ipv4_lpm ipv4_forward 10.0.1.1/32 => 00:00:00:00:01:00 1
-     * which passes MAC=00:00:00:00:01:00 and PORT=1 as action parameters
-     * into ipv4_forward(dstAddr, port).
+     * 上述命令会将 MAC=00:00:00:00:01:00 和 PORT=1 作为动作参数传递给 ipv4_forward(dstAddr, port)。
      *********************************************************************/
+     
+    /*
+    理解：ipv4_forward的参数由控制平面传入，即在s1-runtime.json中有一段如下匹配规则，其"action_params"就指定了行为参数;
+    而在p4语言中，只需要编写对这些传入参数的处理逻辑，而无需关心控制平面如何传入这些参数。
+    {
+      "table": "MyIngress.ipv4_lpm",
+      "match": {
+        "hdr.ipv4.dstAddr": ["10.0.2.2", 32]
+      },
+      "action_name": "MyIngress.ipv4_forward",
+      "action_params": {
+        "dstAddr": "08:00:00:00:02:22",
+        "port": 2
+      }
+    },
+
+    */
+
+
     action ipv4_forward(macAddr_t dstAddr, egressSpec_t port) {
         /*
-            Action function for forwarding IPv4 packets.
+            IPv4 转发动作函数。
 
-            TODO: Implement the forwarding steps, for example:
-              - standard_metadata.egress_spec = port;
-              - hdr.ethernet.dstAddr = dstAddr;
-              - (optionally) set hdr.ethernet.srcAddr to the switch MAC for 'port'
-              - adjust IPv4 TTL and checksums as needed
+            TODO：实现以下转发步骤，例如：
+              - standard_metadata.egress_spec = port;    // 设置出口端口
+              - hdr.ethernet.dstAddr = dstAddr;          // 更新以太网目的MAC
+              - （可选）将hdr.ethernet.srcAddr设为本交换机该端口的MAC地址
+              - 调整IPv4的TTL及校验和（如有需要）
         */
+
         // 告知交换机应该将数据包从哪个端口发出
         standard_metadata.egress_spec = port;
         // 更新数据包的源MAC地址
@@ -167,10 +185,10 @@ control MyIngress(inout headers hdr,
     }
 
     apply {
-        /* TODO: fix ingress control logic
-         *  - Good practice: apply ipv4_lpm only when the IPv4 header is valid, e.g.:
+        /* TODO: 修正 ingress 控制逻辑
+         *  - 推荐做法：仅当 IPv4 头有效时才应用 ipv4_lpm 表，例如：
          *      if (hdr.ipv4.isValid()) { ipv4_lpm.apply(); }
-         *    This skeleton currently applies unconditionally for the exercise.
+         *    当前骨架代码为了练习目的，无条件应用该表。
          */
         if(hdr.ipv4.isValid()){
             ipv4_lpm.apply();
@@ -229,6 +247,7 @@ control MyDeparser(packet_out packet, in headers hdr) {
                                      // only if it is valid; no 'if' needed.
         */
         apply {
+            // 注意解解析中包头由底层向上层逐一添加
             packet.emit(hdr.ethernet);
             packet.emit(hdr.ipv4);
         }
