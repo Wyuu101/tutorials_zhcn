@@ -14,183 +14,112 @@
 本次作业的起始代码在名为 `basic_tunnel.p4` 的文件中，它实际就是上一个练习中 IP 路由器的解决方案。
 
 
-### A note about the control plane
+### 关于控制平面的说明
 
-A P4 program defines a packet-processing pipeline, but the rules within each
-table are inserted by the control plane. When a rule matches a packet, its
-action is invoked with parameters supplied by the control plane as part of the
-rule.
+P4 程序定义了一个数据包处理管道，但每个表中的规则是由控制平面插入的。当某条规则匹配到数据包时，它会调用相应的动作，并由控制面以规则参数方式传递给动作。
 
-For this exercise, we have already added the necessary static control plane
-entries. As part of bringing up the Mininet instance, the `make run` command
-will install packet-processing rules in the tables of each switch. These are
-defined in the `sX-runtime.json` files, where `X` corresponds to the switch
-number.
+在本练习中，我们已经添加了必要的静态控制面规则。每次启动 Mininet 实例时，执行 `make run` 命令会将在各交换机表项中安装这些数据包处理规则。这些规则定义在 `sX-runtime.json` 文件中，其中 `X` 代表交换机编号。
 
-Since the control plane tries to access the `myTunnel_exact` table, and that
-table does not yet exist, the `make run` command will not work with the starter
-code.
+由于控制面会尝试访问 `myTunnel_exact` 表，而该表目前还未在代码中实现，所以使用起始代码时，`make run` 命令将无法正常运行。
 
-**Important:** We use P4Runtime to install the control plane rules. The content
-of files `sX-runtime.json` refer to specific names of tables, keys, and
-actions, as defined in the P4Info file produced by the compiler (look for the
-file `build/basic.p4info` after executing `make run`). Any changes in the P4
-program that add or rename tables, keys, or actions will need to be reflected
-in these `sX-runtime.json` files.
+**重要提示：** 我们使用 P4Runtime 来安装控制面规则。`sX-runtime.json` 文件中的内容需要对应 P4 编译器生成的 P4Info 文件中定义的表名、键、动作（可以在执行 `make run` 后查看 `build/basic.p4info` 文件）。如果你在 P4 程序中新增或重命名了表、键、动作等，必须要同步更新这些 `sX-runtime.json` 文件的内容。
 
-## Step 1: Implement Basic Tunneling
+## 第一步：实现基础隧道功能
 
-The `basic_tunnel.p4` file contains an implementation of a basic IP router.  It
-also contains comments marked with `TODO` which indicate the functionality that
-you need to implement. A complete implementation of the `basic_tunnel.p4`
-switch will be able to forward based on the contents of a custom encapsulation
-header as well as perform normal IP forwarding if the encapsulation header does
-not exist in the packet.
+`basic_tunnel.p4` 文件实现了一个基础的 IP 路由器。该文件中带有 `TODO` 标记的注释指出了你需要完成的功能。完整实现的 `basic_tunnel.p4` 交换机会根据自定义封装头部的内容进行转发；如果数据包中没有该封装头部，则会像普通路由一样使用 IP 转发。
 
-Your job will be to do the following:
+你的任务如下：
 
-1. **NOTE:** A new header type has been added called `myTunnel_t` that contains
-two 16-bit fields: `proto_id` and `dst_id`.
-2. **NOTE:** The `myTunnel_t` header has been added to the `headers` struct.
-2. **TODO:** Update the parser to extract either the `myTunnel` header or
-`ipv4` header based on the `etherType` field in the Ethernet header. The
-etherType corresponding to the myTunnel header is `0x1212`. The parser should
-also extract the `ipv4` header after the `myTunnel` header if `proto_id` ==
-`TYPE_IPV4` (i.e.  0x0800).
-3. **TODO:** Define a new action called `myTunnel_forward` that simply sets the
-egress port (i.e. `egress_spec` field of the `standard_metadata` bus) to the
-port number provided by the control plane.
-4. **TODO:** Define a new table called `myTunnel_exact` that perfoms an exact
-match on the `dst_id` field of the `myTunnel` header. This table should invoke
-either the `myTunnel_forward` action if the there is a match in the table and
-it should invoke the `drop` action otherwise.
-5. **TODO:** Update the `apply` statement in the `MyIngress` control block to
-apply your newly defined `myTunnel_exact` table if the `myTunnel` header is
-valid. Otherwise, invoke the `ipv4_lpm` table if the `ipv4` header is valid.
-6. **TODO:** Update the deparser to emit the `ethernet`, then `myTunnel`, then
-`ipv4` headers. Remember that the deparser will only emit a header if it is
-valid. A header's implicit validity bit is set by the parser upon extraction.
-So there is no need to check header validity here.
-7. **TODO:** Add static rules for your newly defined table so that the switches
-will forward correctly for each possible value of `dst_id`. See the diagram
-below for the topology's port configuration as well as how we will assign IDs
-to hosts. For this step you will need to add your forwarding rules to the
-`sX-runtime.json` files.
+1. **注意：** 增加了一种新的头部类型 `myTunnel_t`，它包含两个 16 位字段：`proto_id` 和 `dst_id`。
+2. **注意：** `myTunnel_t` 头部已被加入到 `headers` 结构体中。
+3. **TODO：** 请更新 parser，根据以太网头部中的 `etherType` 字段，解析出 `myTunnel` 头部或 `ipv4` 头部。`myTunnel` 协议对应的 EtherType 为 `0x1212`。如果解析出了 `myTunnel` 头部，且其 `proto_id` 字段为 `TYPE_IPV4`（即 0x0800），则还需要进一步解析 `ipv4` 头部。
+4. **TODO：** 定义一个名为 `myTunnel_forward` 的新动作，其逻辑很简单：将标准元数据总线 `egress_spec` 字段设置为控制面传入的端口号。
+5. **TODO：** 定义一个名为 `myTunnel_exact` 的新表，该表对 `myTunnel` 头部的 `dst_id` 字段进行精确匹配。如果有匹配，调用 `myTunnel_forward` 动作，否则调用 `drop` 动作。
+6. **TODO：** 更新 `MyIngress` 控制块中的 `apply` 语句：如果 `myTunnel` 头部有效，则应用你的 `myTunnel_exact` 表；否则如果 `ipv4` 头部有效，则应用 `ipv4_lpm` 表。
+7. **TODO：** 更新 deparser，使其依次发射（emit）`ethernet`、`myTunnel`、`ipv4` 头部。注意 deparser 只有在头部有效的情况下才会发射该头部。头部的 implicit valid 位在 parser 解析时已自动设置，因此无需单独检查。
+8. **TODO：** 为你定义的新表添加静态转发表项，使交换机能够针对每种 `dst_id` 正确转发。下方拓扑图展示了端口配置及 host 的 ID 分配方式。完成本步骤时，你需要在各个 `sX-runtime.json` 文件内添加相应的规则。
 
 ![topology](./topo.png)
 
-## Step 2: Run your solution
+## 第二步：运行你的解决方案
 
-1. In your shell, run:
+1. 在 shell 里运行：
    ```bash
    make run
    ```
-   This will:
-   * compile `basic_tunnel.p4`, and
-   * start a Mininet instance with three switches (`s1`, `s2`, `s3`) configured
-     in a triangle, each connected to one host (`h1`, `h2`, and `h3`).
-   * The hosts are assigned IPs of `10.0.1.1`, `10.0.2.2`, and `10.0.3.3`.
+   这将会：
+   * 编译 `basic_tunnel.p4`；
+   * 启动一个包含三个交换机（`s1`、`s2`、`s3`）的 Mininet 实例，三者以三角形互连，每台交换机各连接一台主机（`h1`、`h2`、`h3`）；
+   * 主机的 IP 地址分别分配为 `10.0.1.1`、`10.0.2.2` 和 `10.0.3.3`。
 
-2. You should now see a Mininet command prompt. Open two terminals for `h1` and
-`h2`, respectively:
+2. 现在你应该会看到 Mininet 命令提示符。分别为 `h1` 和 `h2` 打开两个终端：
   ```bash
   mininet> xterm h1 h2
   ```
-3. Each host includes a small Python-based messaging client and server. In
-`h2`'s xterm, start the server:
+3. 每台主机上都有一个用 Python 实现的小型消息客户端和服务器。在 `h2` 的终端中，启动消息服务器：
   ```bash
   ./receive.py
   ```
-4. First we will test without tunneling. In `h1`'s xterm, send a message to
-`h2`:
+4. 首先测试不使用隧道的情形。在 `h1` 终端中发送消息到 `h2`：
   ```bash
   ./send.py 10.0.2.2 "P4 is cool"
   ```
-  The packet should be received at `h2`. If you examine the received packet
-  you should see that it consists of an Ethernet header, an IP header, a TCP
-  header, and the message. If you change the destination IP address (e.g. try
-  to send to `10.0.3.3`) then the message should not be received by `h2`, and
-  will instead be received by `h3`.
+  此时数据包应被 `h2` 收到。如果你分析收到的数据包，可以看到它包含以太网头、IP头、TCP头和消息内容。如果你修改目标 IP 地址（例如发送到 `10.0.3.3`），消息将不会被 `h2` 收到，而会被 `h3` 收到。
   
-5. Now we test with tunneling. In `h1`'s xterm, send a message to `h2`:
+5. 现在测试使用隧道的情况。在 `h1` 终端中向 `h2` 发送消息：
   ```bash
   ./send.py 10.0.2.2 "P4 is cool" --dst_id 2
   ```
-  The packet should be received at `h2`. If you examine the received packet you
-  should see that is consists of an Ethernet header, a tunnel header, an IP header,
-  a TCP header, and the message.
+  此时数据包应被 `h2` 收到。如果你分析收到的数据包，可以看到其结构为以太网头、隧道头、IP头、TCP头以及消息体。
   
-6. In `h1`'s xterm, send a message:
+6. 在 `h1` 终端中再发送一次消息：
   ```bash
   ./send.py 10.0.3.3 "P4 is cool" --dst_id 2
   ```
-  The packet should be received at `h2`, even though that IP address is the address
-  of `h3`. This is because the switch is no longer using the IP header for routing
-  when the `MyTunnel` header is in the packet.
+  即使目标 IP 地址是 `h3` 的地址，数据包依然会被 `h2` 收到。这是因为此时交换机根据 `MyTunnel` 头部的内容进行转发，而不再使用 IP 头部路由。
   
-7. Type `exit` or `Ctrl-D` to leave each xterm and the Mininet command line.
+7. 输入 `exit` 或按 `Ctrl-D` 退出每个 xterm 终端及 Mininet 命令行。
 
 
-> Python Scapy does not natively support the `myTunnel` header type so we have
-> provided a file called `myTunnel_header.py` which adds support to Scapy for
-> our new custom header. Feel free to inspect this file if you are interested
-> in learning how to do this.
+> Python 的 Scapy 工具本身并不支持 `myTunnel` 头部，因此我们提供了 `myTunnel_header.py` 文件，为 Scapy 增加了对该自定义头部的支持。如果你感兴趣，欢迎参考该文件以了解如何实现。
 
-### Food for thought
+### 思考题
 
-To make this tunneling exercise a bit more interesting (and realistic) how
-might you change the P4 code to have the switches add the `myTunnel` header to
-an IP packet upon ingress to the network and then remove the `myTunnel` header
-as the packet leaves to the network to an end host?
+为了让本次隧道练习更有趣（也更贴近实际应用），你如何修改 P4 代码，使交换机能在数据包进入网络时为 IP 包加上 `myTunnel` 头部，并在数据包离开网络、准备发往终端主机时去除 `myTunnel` 头部？
 
-Hints:
+提示：
 
- - The ingress switch will need to map the destination IP address to the
-   corresponding `dst_id` for the `myTunnel` header. Also, remember to set the
-validity bit for the `myTunnel` header so that it can be emitted by the
-deparser.
- - The egress switch will need to remove the `myTunnel` header from the packet
-   after looking up the appropriate output port using the `dst_id` field.
+ - 入网侧（入口）交换机需要将目标 IP 地址映射为 `myTunnel` 头部对应的 `dst_id`。同时，记得设置 `myTunnel` 头部的 valid 位，这样 deparser 阶段才能发射（emit）该头部。
+ - 出网侧（出口）交换机需要根据 `dst_id` 字段查找相应的输出端口，并在查找后将 `myTunnel` 头部从包中移除。
 
-### Troubleshooting
+### 故障排查
 
-There are several problems that might manifest as you develop your program:
+在开发过程中，你可能会遇到如下几种问题：
 
-1. `basic_tunnel.p4` might fail to compile. In this case, `make run` will
-report the error emitted from the compiler and halt.
+1. `basic_tunnel.p4` 可能无法编译成功。这种情况下，`make run` 会报告编译器的错误并终止执行。
 
-2. `basic_tunnel.p4` might compile but fail to support the control plane rules
-in the `sX-runtime.json` files that `make run` tries to install using the
-P4Runtime. In this case, `make run` will report errors if control plane rules
-cannot be installed. Use these error messages to fix your `basic_tunnel.p4`
-implementation or forwarding rules.
+2. `basic_tunnel.p4` 可能能成功编译，但 `make run` 在用 P4Runtime 尝试下发 `sX-runtime.json` 文件中的控制面规则时失败。这种情况下会有报错信息，请根据这些错误提示修正你的 `basic_tunnel.p4` 实现或转发规则。
 
-3. `basic_tunnel.p4` might compile, and the control plane rules might be
-installed, but the switch might not process packets in the desired way. The
-`logs/sX.log` files contain detailed logs that describing how
-each switch processes each packet. The output is detailed and can help pinpoint
-logic errors in your implementation.
+3. `basic_tunnel.p4` 能编译，通过规则下发，但交换机并未按预期正确处理数据包。可查阅 `logs/sX.log`，其中详细记录了每个交换机处理每个包的过程，可帮助你定位实现中的逻辑错误。
 
-#### Cleaning up Mininet
+#### Mininet 的清理
 
-In the latter two cases above, `make` may leave a Mininet instance running in
-the background. Use the following command to clean up these instances:
+在上述后两种情况下，`make` 可能会遗留一个正在后台运行的 Mininet 实例。可以用下面的命令来清理这些残留实例：
 
 ```bash
 make stop
 ```
 
-## Next Steps
+## 下一步
 
-Congratulations, your implementation works! Move onto the next assignment
-[p4runtime](../p4runtime)!
+恭喜，你的实现已经通过！快进入下一个 [p4runtime](../p4runtime) 练习吧！
 
-## Relevant Documentation
+## 相关文档
 
-Documentation on the Usage of Gateway (gw) and ARP Commands in topology.json is [here](https://github.com/p4lang/tutorials/tree/master/exercises/basic#the-use-of-gateway-gw-and-arp-commands-in-topologyjson)
+关于 topology.json 文件中 Gateway（gw）和 ARP 命令的用法说明见[这里](https://github.com/p4lang/tutorials/tree/master/exercises/basic#the-use-of-gateway-gw-and-arp-commands-in-topologyjson)
 
-The documentation for P4_16 and P4Runtime is available [here](https://p4.org/specs/)
+P4_16 以及 P4Runtime 的官方文档见[这里](https://p4.org/specs/)
 
-All excercises in this repository use the v1model architecture, the documentation for which is available at:
-1. The BMv2 Simple Switch target document accessible [here](https://github.com/p4lang/behavioral-model/blob/master/docs/simple_switch.md) talks mainly about the v1model architecture.
-2. The include file `v1model.p4` has extensive comments and can be accessed [here](https://github.com/p4lang/p4c/blob/master/p4include/v1model.p4).
+本仓库的所有练习均采用 v1model 架构，其文档见下方：
+1. BMv2 Simple Switch 目标平台的文档主要介绍 v1model 架构，可查阅[这里](https://github.com/p4lang/behavioral-model/blob/master/docs/simple_switch.md)。
+2. `v1model.p4` 头文件本身有详细注释，可查阅[这里](https://github.com/p4lang/p4c/blob/master/p4include/v1model.p4)。
